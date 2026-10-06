@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>建筑绿化偏好大挑战</title>
+<!-- ============================================================
+     v3.0 · ① ops 运维摘要 10 条全部灌入（中文，口径对齐论文 §2.4.2–2.4.3）
+          ② 性能备注区固定显示（内容留空，正文 justify）
+     左池 HGI(屋顶&阳台) | 中间 Q-sort 网格 | 右池 VGI(墙面&立面)
+     全坑清零 🎉
+     ============================================================ -->
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; font-family:"Microsoft YaHei",sans-serif; }
+  body { background:#f0f7f4; padding:20px; }
+  .screen { display:none; max-width:1200px; margin:0 auto; }
+  .screen.active { display:block; }
+  #sort { max-width:1400px; }
+  h1 { text-align:center; margin-bottom:20px; color:#2e7d32; font-size:28px; }
+
+  /* ===== 全尺寸卡（浏览页 / 池内展开态） ===== */
+  .card-deck { display:flex; flex-wrap:wrap; gap:12px; justify-content:center; padding:16px;
+               background:#fff; border-radius:12px; box-shadow:0 4px 10px rgba(46,125,50,.1); }
+  .gcard { width:240px; border:2px solid #81c784; border-radius:10px; padding:10px; background:#fff; }
+  .card-title { font-weight:bold; font-size:13px; text-align:center; color:#1a3a5c;
+                background:#d6e4f0; border-radius:6px; padding:6px 4px; margin-bottom:6px; line-height:1.4; }
+  .card-img-placeholder { width:100%; height:110px; border-radius:6px; margin-bottom:6px;
+                          display:flex; align-items:center; justify-content:center; color:#fff;
+                          font-size:12px; font-weight:bold; position:relative; overflow:hidden; flex-shrink:0; }
+  .card-section { font-size:11px; color:#37474f; border-radius:4px; padding:5px 7px; margin-bottom:5px; line-height:1.5; }
+  .card-section.ops  { background:#eceff1; }
+  .card-section.perf { background:#e3f2fd; font-style:italic; }
+  .card-swot { display:flex; gap:5px; }
+  .card-adv, .card-dis { flex:1; border-radius:6px; padding:6px; }
+  .card-adv { background:#e8f5e9; border:1px solid #a5d6a7; }
+  .card-dis { background:#ffebee; border:1px solid #ef9a9a; }
+  .swot-head { font-weight:bold; font-size:11px; margin-bottom:4px; text-align:center; }
+  .card-adv .swot-head { color:#1b5e20; }
+  .card-dis .swot-head { color:#b71c1c; }
+  .swot-line { font-size:10px; line-height:1.5; color:#333; margin-bottom:4px; }
+  .group-title { margin:18px auto 10px; font-weight:bold; font-size:16px; color:#fff;
+                 padding:8px 16px; border-radius:8px; }
+  .group-title.hgi { background:#2e7d32; }
+  .group-title.vgi { background:#00695c; }
+
+  /* ===== 深度评价·参考面板（图左 + SWOT 右） ===== */
+  .review-ref { display:flex; gap:10px; margin-bottom:14px; align-items:stretch; }
+  .review-ref-img { width:210px; flex-shrink:0; border-radius:8px; position:relative; overflow:hidden;
+                    display:flex; align-items:center; justify-content:center;
+                    color:#fff; font-weight:bold; font-size:13px; min-height:120px; }
+  .review-ref-img img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  .review-ref-swot { flex:1; display:flex; gap:8px; min-width:0; }
+  .review-ref-swot .swot-line { font-size:11px; }
+  @media (max-width:700px){
+    .review-ref { flex-direction:column; }
+    .review-ref-img { width:100%; height:150px; }
+  }
+
+  /* ===== 三栏排序布局 ===== */
+  .sort-layout { display:flex; gap:14px; align-items:flex-start; }
+  .side-pool { width:262px; flex-shrink:0; border-radius:12px; padding:8px; transition:background .15s; }
+  .side-pool.drag-over { background:#e8f5e9; outline:2px dashed #2e7d32; }
+  .grid-center { flex:1; min-width:0; }
+  .pool-title { display:flex; justify-content:space-between; align-items:center;
+                font-weight:bold; padding:8px 10px; border-radius:8px; color:#fff;
+                margin-bottom:10px; font-size:14px; }
+  .pool-title.hgi { background:#2e7d32; }
+  .pool-title.vgi { background:#00695c; }
+  .pool-toggle { background:rgba(255,255,255,.25); border:none; color:#fff; font-size:11px;
+                 padding:4px 10px; border-radius:12px; cursor:pointer; }
+  .pool-toggle:hover { background:rgba(255,255,255,.4); }
+  .pool-cards { display:flex; flex-direction:column; gap:10px; }
+  .empty-pool { color:#9e9e9e; text-align:center; font-size:12px; padding:18px 0; }
+
+  /* 池内缩略卡 */
+  .pcard { border:2px solid #81c784; border-radius:10px; background:#fff; padding:8px;
+           cursor:grab; user-select:none; transition:box-shadow .15s, transform .15s;
+           position:relative; }
+  .pcard:hover { transform:translateY(-2px); box-shadow:0 4px 10px rgba(46,125,50,.18); }
+  .pcard.dragging { opacity:.4; transform:rotate(4deg); }
+  .pcard.expanded { border-color:#2e7d32; background:#fbfff8; }
+  .pcard-head { display:flex; gap:8px; align-items:flex-start; }
+  .pcard-thumb { width:52px; height:52px; border-radius:6px; flex-shrink:0;
+                 display:flex; align-items:center; justify-content:center;
+                 color:#fff; font-weight:bold; font-size:11px; position:relative; overflow:hidden; }
+  .pcard-body { flex:1; min-width:0; }
+  .pcard-name { font-size:12px; font-weight:bold; line-height:1.3; margin-bottom:4px; color:#222; }
+  .pcard-sum { font-size:10px; color:#444; line-height:1.45; margin-bottom:2px; }
+  .mini { margin-right:3px; }
+  .mini.plus { color:#2e7d32; }
+  .mini.minus { color:#d84315; }
+  .pcard-detail { display:none; margin-top:8px; border-top:1px dashed #c8e6c9; padding-top:8px; }
+  .pcard.expanded .pcard-detail { display:block; }
+
+  /* ===== 悬停浮动预览 ===== */
+  @media (hover:hover) and (min-width:1101px) {
+    .pcard:not(.expanded) .pcard-detail {
+      display:block;
+      position:absolute;
+      top:-6px;
+      width:266px;
+      padding:8px;
+      background:#fff;
+      border:2px solid #2e7d32;
+      border-radius:12px;
+      box-shadow:0 10px 28px rgba(0,0,0,.28);
+      z-index:1500;
+      left:calc(100% + 8px);
+      max-height:calc(100vh - 40px);
+      overflow-y:auto;
+      visibility:hidden;
+      opacity:0;
+      transition:opacity .12s ease .28s, visibility 0s linear .28s;
+    }
+    #poolVGI .pcard:not(.expanded) .pcard-detail { left:auto; right:calc(100% + 8px); }
+    .pcard:not(.expanded):hover .pcard-detail { visibility:visible; opacity:1; }
+    .pcard.dragging .pcard-detail { visibility:hidden !important; opacity:0 !important; }
+  }
+
+  /* 槽内超紧凑卡 */
+  .scard { width:100%; background:#fff; border-radius:8px; padding:5px;
+           display:flex; gap:7px; align-items:center; cursor:grab; user-select:none; }
+  .scard:hover { box-shadow:0 2px 8px rgba(0,0,0,.15); }
+  .scard.dragging { opacity:.4; }
+  .scard-thumb { width:44px; height:44px; border-radius:6px; flex-shrink:0;
+                 display:flex; align-items:center; justify-content:center;
+                 color:#fff; font-size:10px; font-weight:bold; position:relative; overflow:hidden; }
+  .scard-name { font-size:11px; font-weight:bold; line-height:1.3; color:#222; }
+
+  /* 图片统一加载规则：图浮在色块上，挂了自动露出色块 */
+  .card-img-placeholder img, .pcard-thumb img, .scard-thumb img {
+    position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+
+  /* ===== Q-sort 网格 ===== */
+  .grid-row { display:flex; gap:12px; justify-content:center; }
+  .col { flex:1; max-width:190px; background:#fff; border-radius:12px; padding:8px;
+         text-align:center; box-shadow:0 2px 8px rgba(0,0,0,.08); }
+  .col h3 { font-size:14px; padding:7px 0; border-radius:8px; color:#fff; margin-bottom:8px; }
+  .col.strong-disagree h3 { background:#d84315; }
+  .col.disagree h3 { background:#ff7043; }
+  .col.neutral h3 { background:#9e9e9e; }
+  .col.agree h3 { background:#66bb6a; }
+  .col.strong-agree h3 { background:#2e7d32; }
+  .slots { display:flex; flex-direction:column; gap:8px; }
+  .slot { min-height:60px; border:2px dashed #c8e6c9; border-radius:8px;
+          display:flex; align-items:center; justify-content:center; padding:2px; }
+  .slot.filled { border-style:solid; border-color:#81c784; }
+  .slot.drag-over { border-color:#2e7d32; background:#e8f5e9; transform:scale(1.03); }
+  .slot-label { font-size:11px; color:#bbb; }
+
+  /* ===== 拖动提示条 ===== */
+  #dragHint { position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+              background:#2e7d32; color:#fff; padding:10px 24px; border-radius:25px;
+              display:none; z-index:2000; box-shadow:0 4px 12px rgba(0,0,0,.3); font-size:14px; }
+  body.dragging-active #dragHint { display:block; }
+
+  /* ===== 按钮 / 通用 ===== */
+  .btn { display:inline-block; padding:12px 36px; font-size:16px; background:#2e7d32; color:#fff;
+         border:none; border-radius:25px; cursor:pointer; margin:8px; transition:all .2s; }
+  .btn:hover { background:#1b5e20; transform:translateY(-2px); }
+  .btn.secondary { background:#78909c; }
+  .btn.secondary:hover { background:#546e7a; }
+  .btn.small { padding:6px 14px; font-size:12px; margin:0; border-radius:15px; }
+  .btn:disabled { background:#aaa; cursor:not-allowed; transform:none; }
+  .info { text-align:center; margin:12px 0; color:#555; }
+  .warn { color:#d84315; font-weight:bold; }
+  #timer { font-size:32px; text-align:center; color:#d84315; margin:10px 0; font-weight:bold; }
+
+  /* ===== 首页 ===== */
+  .setup-box { background:#fff; padding:40px; border-radius:16px; max-width:600px; margin:0 auto;
+               box-shadow:0 4px 12px rgba(46,125,50,.15); text-align:center; }
+  .setup-box label { display:block; margin:12px 0 6px; font-weight:bold; color:#333; }
+  .setup-box input { width:100%; padding:12px; border:2px solid #c8e6c9; border-radius:8px;
+                     font-size:14px; margin-bottom:20px; text-align:center; }
+  .setup-box input:focus { outline:none; border-color:#2e7d32; }
+  .choice-group { display:flex; flex-direction:column; gap:12px; }
+  .choice-btn { width:100%; padding:20px; border:2px solid #c8e6c9; background:#f9fbe7; border-radius:12px;
+                cursor:pointer; text-align:left; transition:all .2s; }
+  .choice-btn:hover { border-color:#2e7d32; background:#e8f5e9; transform:translateY(-2px); }
+  .choice-btn b { font-size:16px; color:#2e7d32; display:block; margin-bottom:6px; }
+  .choice-btn span { font-size:12px; color:#666; }
+
+  /* ===== 评价页 ===== */
+  .review-block { background:#fff; padding:20px; border-radius:12px; margin-bottom:20px;
+                  box-shadow:0 4px 10px rgba(0,0,0,.05); border-left:5px solid #2e7d32; }
+  .input-row { display:flex; gap:8px; margin-bottom:8px; align-items:center; }
+  .input-row input { flex:1; padding:10px; border:2px solid #e0e0e0; border-radius:8px; font-size:14px; }
+  .input-row input:focus { outline:none; border-color:#66bb6a; }
+  .btn-del { background:#ffebee; color:#d84315; border:1px solid #ffcdd2; border-radius:8px;
+             padding:6px 10px; cursor:pointer; font-weight:bold; }
+  .btn-del:hover { background:#d84315; color:#fff; }
+  .section-title-pros { color:#1b5e20; text-align:left; margin-top:16px; border-bottom:2px solid #a5d6a7;
+                        padding-bottom:4px; font-weight:bold; }
+  .section-title-cons { color:#d84315; text-align:left; margin-top:20px; border-bottom:2px solid #ffccbc;
+                        padding-bottom:4px; font-weight:bold; }
+  .check-icon { width:24px; text-align:center; font-weight:bold; font-size:18px; }
+  .check-icon.valid { color:#2e7d32; }
+  .check-icon.invalid { color:#d84315; }
+  .check-panel { position:fixed; right:20px; top:20px; width:260px; background:#fff; padding:15px;
+                 border-radius:12px; box-shadow:0 6px 16px rgba(0,0,0,.12); z-index:1000;
+                 display:none; border:2px solid #c8e6c9; }
+  .check-panel h4 { margin-bottom:10px; color:#2e7d32; border-bottom:1px solid #c8e6c9; padding-bottom:8px; }
+  .check-item { display:flex; justify-content:space-between; margin-bottom:6px; font-size:13px; align-items:center; }
+  .check-status { font-weight:bold; }
+
+  table.summary { width:100%; border-collapse:collapse; background:#fff; margin-top:16px;
+                  border-radius:8px; overflow:hidden; }
+  table.summary th, table.summary td { border:1px solid #c8e6c9; padding:10px; text-align:center; font-size:13px; }
+  table.summary th { background:#2e7d32; color:#fff; }
+
+  @media (max-width:1400px){ .side-pool { width:225px; } }
+  @media (max-width:1100px){
+    .sort-layout { flex-direction:column; }
+    .side-pool { width:100%; }
+    .pool-cards { flex-direction:row; flex-wrap:wrap; justify-content:center; }
+    .pcard { width:240px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="dragHint">🖐 松手即可把卡片放回池子（显示全部内容）</div>
+
+<!-- 右侧检查面板 -->
+<div id="checkPanel" class="check-panel">
+  <h4>📋 填写检查 (建议 ≥ 15字)</h4>
+  <div id="checkList"></div>
+  <div style="margin-top:10px; font-size:12px; color:#666;">全部显示 <span style="color:#2e7d32;font-weight:bold;">✓ 合格</span> 提交体验最佳。</div>
+</div>
+
+<!-- 屏幕1：设置 -->
+<div id="setup" class="screen active">
+  <h1>🌿 对我最爱的建筑绿化卡片排序大挑战 🏢</h1>
+  <div class="setup-box">
+    <label>你的专属代号 (如 R1, E2)</label>
+    <input type="text" id="pid" placeholder="请输入代号">
+    <label>请选择你当前的挑战状态：</label>
+    <div class="choice-group">
+      <button class="choice-btn" onclick="startSort('preT1')">
+        <b>🌱 我是新手：第一次做这个挑战</b>
+        <span>在不受他人影响的情况下，凭直觉选出你最真实的偏好。</span>
+      </button>
+      <button class="choice-btn" onclick="startSort('preT2')">
+        <b>👀 我是高手：已看过其他组的答案，来做第二次</b>
+        <span>请根据观摩后的最新想法重新排序 (限时5分钟)。</span>
+      </button>
+    </div>
+    <p class="info" style="margin-top:14px; font-size:12px; color:#888;">
+      规则提示：每列槽位固定(强烈反对1张、反对2张、中立4张、赞成2张、强烈赞成1张)。<br>
+      槽满后无法再放入，<b>必须做出取舍</b>——这就是挑战的乐趣所在！
+    </p>
+  </div>
+</div>
+
+<!-- 屏幕2：浏览 -->
+<div id="browse" class="screen">
+  <h1>先看卡：10 个绿化原型</h1>
+  <p class="info">卡片分成了两大类，先花点时间浏览，心里有数后开始大挑战！</p>
+  <div class="group-title hgi">🏠 屋顶 & 阳台绿化</div>
+  <div class="card-deck" id="browseHGI"></div>
+  <div class="group-title vgi">🧗 墙面 & 立面绿化</div>
+  <div class="card-deck" id="browseVGI"></div>
+  <div style="text-align:center; margin-top:20px;">
+    <button class="btn" onclick="renderSort(); show('sort');">我已了解，开始排序 🚀</button>
+  </div>
+</div>
+
+<!-- 屏幕3：排序 -->
+<div id="sort" class="screen">
+  <h1 id="sortTitle">把卡片拖入网格</h1>
+  <div id="timer"></div>
+  <p class="info">未放置: <span id="remaining" class="warn">10</span> 张 ·
+     <span style="color:#888">拖入网格排序 · 拖到任意空白处松手可放回池子 · 槽位间可直接互拖 ·
+     <b style="color:#2e7d32">鼠标悬停两侧卡片即可预览完整信息</b></span></p>
+  <div class="sort-layout">
+    <div class="side-pool" id="poolHGI">
+      <div class="pool-title hgi"><span>🏠 屋顶 & 阳台绿化</span>
+        <button class="pool-toggle" id="poolBtnHGI" onclick="togglePool('HGI')">⤢ 展开全部</button></div>
+      <div class="pool-cards" id="poolCardsHGI"></div>
+    </div>
+    <div class="grid-center"><div class="grid-row" id="grid"></div></div>
+    <div class="side-pool" id="poolVGI">
+      <div class="pool-title vgi"><span>🧗 墙面 & 立面绿化</span>
+        <button class="pool-toggle" id="poolBtnVGI" onclick="togglePool('VGI')">⤡ 收起全部</button></div>
+      <div class="pool-cards" id="poolCardsVGI"></div>
+    </div>
+  </div>
+  <div style="text-align:center; margin-top:20px;">
+    <button class="btn" id="submitBtn" onclick="proceedToReview()" disabled>下一步：深度评价 📝</button>
+    <button class="btn secondary" onclick="resetSort()">重新开始 🔄</button>
+  </div>
+</div>
+
+<!-- 屏幕4：评价 -->
+<div id="review" class="screen">
+  <h1>📝 深度评价</h1>
+  <p class="info">太棒了！现在请针对你排在 <b>强烈赞成</b> 和 <b>赞成</b> 的选项，写下具体的正反面意见。<br>每张卡上方附有<b>图片与正反面参考</b>，帮助你回忆。默认各 3 条，每条 <b>建议至少 15 个字</b>。可点击右侧 <b>−</b> 删除或底部 <b>+</b> 增加。</p>
+  <div id="reviewArea"></div>
+  <div style="text-align:center; margin-top:20px;">
+    <button class="btn" onclick="finalSubmit()">提交全部结果 🎉</button>
+  </div>
+</div>
+
+<!-- 屏幕5：完成 -->
+<div id="done" class="screen">
+  <h1>🎉 挑战完成！</h1>
+  <p class="info">你的选择与意见已生成。点击下载按钮，然后<b>把文件发到微信群</b>即可。</p>
+  <div style="text-align:center"><button class="btn" onclick="downloadJSON()">下载我的结果 ⬇️</button></div>
+  <div id="resultPreview"></div>
+</div>
+
+<!-- 屏幕6：汇总 -->
+<div id="aggregate" class="screen">
+  <h1>📊 汇总矩阵 (主持人用)</h1>
+  <p class="info">把收到的所有 JSON 文件一起拖到下面的框里。</p>
+  <div id="dropzone" style="border:3px dashed #2e7d32; border-radius:12px; padding:40px;
+       text-align:center; color:#2e7d32; font-size:16px; background:#f9fbe7;">
+    拖拽 JSON 文件到此处
+  </div>
+  <div id="matrixWrap"></div>
+  <button class="btn secondary" style="display:none" id="csvBtn" onclick="exportCSV()">导出 CSV</button>
+</div>
+
+<script>
+/* ================= 卡片数据 ================= */
+const CARDS = [
+ {id:"EGR", name:"轻型绿色屋顶 Extensive Green Roof",
+  s:"非常轻——相当于每平方米屋顶只站一两个成人的重量；酷热午后，屋顶表面可凉快 8–14 °C。",
+  w:"栽培基质只有几厘米厚，只有强韧耐旱的植物能存活；一旦彻底干透，屋顶反而可能比光秃秃的混凝土更热。",
+  o:"屋顶是全楼共享的，一个决定即可惠及所有住户；现时资助计划优先考虑 2000 年前落成的屋邨。",
+  t:"常用的耐旱植物在潮湿夏季可能烂根；闷热夜晚，白天蓄积的热量可能倒灌进室内。",
+  sEn:"Very light — like one or two adults standing on each square metre of roof, so hot afternoons the roof surface can feel 8–14 °C cooler",
+  wEn:"The culture is only a few centimetres deep, so only tough plants survive; fully dried out, the roof can get hotter than bare concrete",
+  oEn:"The roof is shared, so one decision covers everyone; funding currently prioritises estates built before 2000",
+  tEn:"The usual drought-loving plants can rot in our humid summers: on muggy nights, stored heat can leak back indoors",
+  img:"img/EGR.png", ops:"屋顶设 2.5–15 厘米浅层种植床，栽植景天与苔藓；养护极少", perf:""},
+ {id:"SIGR", name:"半密集绿色屋顶 Semi-Intensive Green Roof",
+  s:"折中选择：土壤稍深、植物种类更丰富，顶楼室内天花板温度约低 5 °C。",
+  w:"比轻型系统重，需要专门设计的排水层；在潮湿的南方气候中几乎未经实测。",
+  o:"当轻型屋顶显得太单调、完整花园又太费工时，它是恰到好处的折中方案。",
+  t:"排水不良的土壤会积水，同时伤害植物与楼板。",
+  sEn:"A middle option: slightly deeper soil, more plant variety, and top-floor ceilings about 5 °C cooler",
+  wEn:"Heavier than a thin system and needs a designed drainage layer; barely tested in humid southern climates",
+  oEn:"A compromise where a thin roof feels too plain and a full garden too much work",
+  tEn:"Poorly drained soil can trap water and damage both plants and the roof slab",
+  img:"img/SIGR.png", ops:"屋顶覆约 20 厘米土壤，种植草类、草本花卉与低矮灌木；养护适中", perf:""},
+ {id:"IGR", name:"屋顶花园 Intensive Green Roof",
+  s:"深土屋顶花园降温效果最好——一天中最热时段，室内可凉快 9–11 小时。",
+  w:"土壤很重，必须先核查屋顶结构能否承重，之后还要定期浇水、修剪和除草。",
+  o:"政府计划现正鼓励优化屋顶；花园式屋顶能提升屋邨的吸引力和形象。",
+  t:"台风可能把树木连根拔起；本地气候尚无经过验证的植物清单；在高层大厦，它主要只惠及顶楼住户。",
+  sEn:"A deep-soil roof garden cools best — it can cut 9–11 hours off the hottest part of the day",
+  wEn:"Heavy soil that requires the roof structure to be checked first, plus regular watering, pruning and weeding",
+  oEn:"City programmes now encourage better rooftops; a garden roof can add appeal to the estate",
+  tEn:"Trees can be uprooted in typhoons; no proven plant list exists for our climate; on tall blocks it mainly helps the top floors",
+  img:"img/IGR.png", ops:"屋顶设 15–200 厘米深厚土层，可种草坪、灌木与乔木；需精细养护", perf:""},
+ {id:"RTF", name:"屋顶农场 Rooftop Farm",
+  s:"既能遮阳又能种出食物；深厚土壤像屋顶花园一样降温，还能固碳。",
+  w:"需要深厚沉重的土壤和持续照料：换季补种、浇水、病虫害防治。",
+  o:"一起种菜能凝聚社区，赢得住户的支持。",
+  t:"潮湿天气容易滋生害虫病害；农场的降温效果是否比得上花园，目前尚无实测数据。",
+  sEn:"Grows food as well as shade; the deep soil cools like a roof garden and can lock away carbon",
+  wEn:"Needs deep, heavy soil and constant care: seasonal replanting, watering, pest control",
+  oEn:"Growing food together can build community and win residents' support",
+  tEn:"Humid weather favours pests and diseases; nobody has yet measured whether a farm cools as well as a garden",
+  img:"img/RTF.png", ops:"屋顶深层种植床作菜圃耕作；需按季节换茬并照料作物", perf:""},
+ {id:"GB", name:"阳台绿化 Balcony Green",
+  s:"你的阳台你话事——无需邻居同意；盆栽可使室内凉快约 2 °C；全表最便宜的选择。",
+  w:"花盆装土少，植物需要经常浇水，还要避开强风。",
+  o:"外凸阳台只按一半建筑面积计算，绿化它几乎没有法规成本。",
+  t:"本地气候尚无经验证的植物清单；六楼以上，栏杆须达 1.10 米高，花盆须固定防坠。",
+  sEn:"Your balcony, your decision — no neighbours' consent needed; pots can cool the room behind by about 2 °C; the cheapest option",
+  wEn:"Pots hold little soil, so plants need regular watering and shelter from strong wind",
+  oEn:"Protruding balconies count as half floor area, so greening them carries little regulatory cost",
+  tEn:"No tested plant list for our climate; above six storeys, railings must be 1.10 m high and pots secured against falling",
+  img:"img/GB.png", ops:"阳台上的花盆与种植箱由各住户自行打理经营", perf:""},
+ {id:"GFD", name:"直生绿墙 Green Facade – Direct",
+  s:"攀爬植物直接沿墙向上长——不用框架，几乎零成本，不增加重量。",
+  w:"爬满速度慢；植物紧贴墙面生长，潮湿天气里闷住的湿气可能让墙更热而非更凉。",
+  o:"在需要众多业主一致同意时，它是最不打扰人的选择。",
+  t:"墙体内部潮湿会滋生霉菌，根系可能钻进开裂的墙皮；常见攀爬品种原生于较凉爽气候，本地表现未经验证。",
+  sEn:"Climbers grow straight up the wall — no frame, almost no cost, no extra weight",
+  wEn:"Slow to cover; held tight against the wall, trapped damp can leave the wall warmer, not cooler, on humid days",
+  oEn:"The least disruptive option where many owners must agree",
+  tEn:"Damp inside the wall invites mould, and roots can work into cracked render; the common climbers are cooler-climate species untested here",
+  img:"img/GFD.png", ops:"攀缘植物在地面生根，沿裸墙直接向上攀爬；无需支撑结构", perf:""},
+ {id:"GFI", name:"格栅绿墙 Green Facade – Indirect",
+  s:"植物沿离墙一掌宽的格栅攀爬；通风空隙为墙体遮挡日晒与湿气。",
+  w:"格栅必须固定在日渐老化的墙体上，成本高于自由攀爬式。",
+  o:"格栅外观整洁，若住户反对可以随时拆除。",
+  t:"潮湿空气令金属和塑料框架更快锈蚀老化；格栅上的植物会兜住台风风势。",
+  sEn:"Plants climb a trellis a hand's-width off the wall; the ventilated gap shields the wall from sun and damp",
+  wEn:"The frame must be fixed into an ageing wall and costs more than free climbers",
+  oEn:"Trellises look tidy and can be removed if residents object",
+  tEn:"Humid air rusts metal and plastic frames faster; trellised plants catch typhoon winds",
+  img:"img/GFI.png", ops:"藤蔓牵引于离墙 3–15 厘米的格栅或钢缆上，形成通风隔热缓冲层", perf:""},
+ {id:"LWC", name:"连续毡式绿墙 Living Wall – Continuous",
+  s:"整面连续的毛毡植生墙，从顶部淋水灌溉，无需土壤。",
+  w:"颇为娇贵：香草和多肉植物在长期湿润的毛毡里会烂死，只有木本植物能适应。",
+  o:"外观整洁统一，适合整幅外墙的大型绿化计划。",
+  t:"持续潮湿容易引发烂根和蜗牛侵害；植物可能需要频繁更换；本地气候尚无经验证的植物清单。",
+  sEn:"A continuous felt wall of plants, watered from the top, needing no soil",
+  wEn:"Fussy: herbs and succulents die in the constantly wet felt, and only woody plants cope",
+  oEn:"A neat, uniform look that suits whole-façade programmes",
+  tEn:"Constant damp invites root rot and snails; plants may need replacing; no proven plant list for our climate",
+  img:"img/LWC.png", ops:"植物扎根于挂墙毛毡，由顶部向下的水培式灌溉系统供水", perf:""},
+ {id:"LWM", name:"模块绿墙 Living Wall – Modular",
+  s:"预栽好的模块卡扣在框架上；单个模块可随时替换；内置储水槽让浇水更均匀。",
+  w:"全表最费养护的选择：施肥与灌溉系统需要持续照看。",
+  o:"模块可以分期安装，配合资金分批到位的节奏。",
+  t:"浇水控制不当会像轻型绿屋顶一样烂根；按每平方米计，它是外墙绿化中最贵的方案。",
+  sEn:"Ready-planted panels clip to a frame; single panels swap out; built-in water pockets even out watering",
+  wEn:"The most upkeep-heavy option: feeding and irrigation systems need attention",
+  oEn:"Panels can be installed in stages, matching how funding is released",
+  tEn:"Poorly controlled watering rots roots just as on thin green roofs; the costliest façade option per square metre",
+  img:"img/LWM.png", ops:"预制种植模块自带基质与滴灌管线；损坏模块可单独更换维修", perf:""},
+ {id:"VFS", name:"垂直农场 Vertical Farming System",
+  s:"蔬菜种在自带结构的多层容器中，不给墙体增加负担——食物与遮阳兼得。",
+  w:"需要农场级别的定时投入：种植、施肥、病虫害防治。",
+  o:"契合社区农圃计划，让邻里聚在一起。",
+  t:"高温潮湿令作物受压、害虫滋生；老旧外墙上的固定件仍需检查。",
+  sEn:"Vegetables grow in stacked containers on their own structure, keeping weight off the wall — food plus shading",
+  wEn:"Farming-level effort on a schedule: planting, feeding, pest control",
+  oEn:"Fits community-farming initiatives that bring neighbours together",
+  tEn:"Heat and humidity stress crops and favour pests; fixings into an old façade still need checking",
+  img:"img/VFS.png", ops:"作物置于独立支架的层叠容器中，可采用土壤/水培/气雾培方式种植", perf:""}
+];
+
+/* 色块占位色池（图片加载失败时兜底用） */
+const COLORS = { EGR:"#66bb6a", SIGR:"#43a047", IGR:"#2e7d32", RTF:"#1b5e20",
+                 GB:"#8bc34a", GFD:"#00897b", GFI:"#00695c", LWC:"#26a69a",
+                 LWM:"#00838f", VFS:"#006064" };
+
+/* 分组：HGI = 屋顶&阳台（左池），其余为 VGI（右池） */
+const HGI = ["EGR","SIGR","IGR","RTF","GB"];
+
+const SLOTS = [
+ {key:"-2", label:"强烈反对", cap:1, cls:"strong-disagree"},
+ {key:"-1", label:"反对",     cap:2, cls:"disagree"},
+ {key:"0",  label:"中立",     cap:4, cls:"neutral"},
+ {key:"+1", label:"赞成",     cap:2, cls:"agree"},
+ {key:"+2", label:"强烈赞成", cap:1, cls:"strong-agree"}
+];
+
+const MIN_LEN = 15;
+let state = { pid:"", mode:"", placement:{}, startTime:0, log:[], feedback:{} };
+let expandedIds = new Set();
+let justDragged = false;
+let hasConfirmedShortText = false;
+let timerInterval = null;
+
+/* ================= 通用 ================= */
+function show(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.getElementById('checkPanel').style.display = (id === 'review') ? 'block' : 'none';
+  window.scrollTo(0,0);
+}
+
+function startSort(selectedMode){
+  if(timerInterval){ clearInterval(timerInterval); timerInterval=null; }
+  const pid = document.getElementById('pid').value.trim();
+  if(!pid){ alert("请先输入你的专属代号哦！"); return; }
+  state.pid = pid;
+  state.mode = selectedMode;
+  state.placement = {};
+  state.feedback = {};
+  state.startTime = Date.now();
+  state.log = [{event:"session_start", pid, mode:state.mode, ts:new Date().toISOString()}];
+  renderBrowse();
+  show('browse');
+}
+
+/* ================= 图片块（图挂了自动露出底下的色块+ID） ================= */
+function imgBlock(c, cls, label){
+  return `<div class="${cls}" style="background:${COLORS[c.id]||'#90a4ae'}">${label}${c.img?`<img src="${c.img}" alt="" onerror="this.remove()">`:''}</div>`;
+}
+
+/* ================= 卡片渲染 ================= */
+function cardHTML(c, draggable=true){
+  const imgHTML = imgBlock(c, 'card-img-placeholder', c.id + ' · 效果示意图');
+  const opsHTML  = `<div class="card-section ops">🔧 运维摘要：${c.ops}</div>`;
+  /* 性能备注区固定显示；perf 有内容时自动接在冒号后 */
+  const perfHTML = `<div class="card-section perf"><b>📊 性能备注区</b>${c.perf ? `：${c.perf}` : ''}</div>`;
+  return `<div class="gcard" data-card="${c.id}" ${draggable?'draggable="true"':''}>
+    <div class="card-title">${c.name}</div>
+    ${imgHTML}
+    ${opsHTML}
+    ${perfHTML}
+    <div class="card-swot">
+      <div class="card-adv">
+        <div class="swot-head">✓ 优点</div>
+        <div class="swot-line">${c.s}</div>
+        <div class="swot-line">${c.o}</div>
+      </div>
+      <div class="card-dis">
+        <div class="swot-head">✗ 缺点</div>
+        <div class="swot-line">${c.w}</div>
+        <div class="swot-line">${c.t}</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* 池内缩略卡 */
+function poolCardHTML(c){
+  const thumb = imgBlock(c, 'pcard-thumb', c.id);
+  return `<div class="pcard ${expandedIds.has(c.id)?'expanded':''}" data-card="${c.id}"
+            draggable="true" onclick="toggleExpand('${c.id}')">
+    <div class="pcard-head">
+      ${thumb}
+      <div class="pcard-body">
+        <div class="pcard-name">${c.name}</div>
+        <div class="pcard-sum"><b class="mini plus">✓</b>${firstClause(c.s)}</div>
+        <div class="pcard-sum"><b class="mini minus">✗</b>${firstClause(c.w)}</div>
+      </div>
+    </div>
+    <div class="pcard-detail">${cardHTML(c,false)}</div>
+  </div>`;
+}
+function firstClause(str, n=26){
+  const s = String(str).split(/[；;。]/)[0];
+  return s.length > n ? s.slice(0, n) + "…" : s;
+}
+function toggleExpand(id){
+  if(justDragged) return;
+  if(expandedIds.has(id)) expandedIds.delete(id); else expandedIds.add(id);
+  renderSort();
+}
+function togglePool(side){
+  const ids = CARDS.filter(c => side==='HGI' ? HGI.includes(c.id) : !HGI.includes(c.id)).map(c=>c.id);
+  const allOpen = ids.every(id=>expandedIds.has(id));
+  ids.forEach(id => allOpen ? expandedIds.delete(id) : expandedIds.add(id));
+  renderSort();
+  document.getElementById(side==='HGI'?'poolBtnHGI':'poolBtnVGI').textContent =
+    allOpen ? '⤢ 展开全部' : '⤡ 收起全部';
+}
+
+/* 槽内超紧凑卡 */
+function slotCardHTML(c){
+  const thumb = imgBlock(c, 'scard-thumb', c.id);
+  return `<div class="scard" data-card="${c.id}" draggable="true">
+    ${thumb}<div class="scard-name">${c.name}</div>
+  </div>`;
+}
+
+function renderBrowse(){
+  const hgi = CARDS.filter(c=>HGI.includes(c.id));
+  const vgi = CARDS.filter(c=>!HGI.includes(c.id));
+  document.getElementById('browseHGI').innerHTML = hgi.map(c=>cardHTML(c,false)).join('');
+  document.getElementById('browseVGI').innerHTML = vgi.map(c=>cardHTML(c,false)).join('');
+}
+
+/* ================= 排序 ================= */
+function renderSort(){
+  if(state.mode === 'preT1') {
+    document.getElementById('sortTitle').innerHTML = "💡 请凭第一直觉，将卡片拖入中间网格";
+  } else {
+    document.getElementById('sortTitle').innerHTML =
+      "⏳ 观摩后的二次重排大挑战！(限时5分钟)<br><span style='font-size:14px; color:#d84315; font-weight:normal;'>请基于刚才观摩他人画布后的最新想法，独立完成重新排序</span>";
+  }
+  const placed = new Set(Object.keys(state.placement));
+  const free = CARDS.filter(c=>!placed.has(c.id));
+  const hgi  = free.filter(c=>HGI.includes(c.id));
+  const vgi  = free.filter(c=>!HGI.includes(c.id));
+  document.getElementById('poolCardsHGI').innerHTML =
+    hgi.length ? hgi.map(poolCardHTML).join('') : '<p class="empty-pool">✅ 全部已放置</p>';
+  document.getElementById('poolCardsVGI').innerHTML =
+    vgi.length ? vgi.map(poolCardHTML).join('') : '<p class="empty-pool">✅ 全部已放置</p>';
+  const grid = document.getElementById('grid');
+  grid.innerHTML = SLOTS.map(s=>{
+    const inCol = Object.entries(state.placement).filter(([id,col])=>col===s.key).map(([id])=>id);
+    let slotsHTML = '';
+    for(let i=0;i<s.cap;i++){
+      const c = inCol[i] ? CARDS.find(x=>x.id===inCol[i]) : null;
+      slotsHTML += `<div class="slot ${c?'filled':''}" data-col="${s.key}">
+        ${c ? slotCardHTML(c) : `<span class="slot-label">空位</span>`}
+      </div>`;
+    }
+    return `<div class="col ${s.cls}"><h3>${s.label}（${s.key}）</h3><div class="slots">${slotsHTML}</div></div>`;
+  }).join('');
+  document.getElementById('remaining').textContent = free.length;
+  document.getElementById('submitBtn').disabled = free.length > 0;
+  bindSlotDnD();
+}
+
+function bindSlotDnD(){
+  document.querySelectorAll('.pcard[draggable], .scard[draggable]').forEach(el=>{
+    el.addEventListener('dragstart', e=>{
+      e.dataTransfer.setData('card', el.dataset.card);
+      el.classList.add('dragging');
+      document.body.classList.add('dragging-active');
+    });
+    el.addEventListener('dragend', ()=>{
+      el.classList.remove('dragging');
+      document.body.classList.remove('dragging-active');
+      justDragged = true; setTimeout(()=>justDragged=false, 80);
+    });
+  });
+  document.querySelectorAll('.slot').forEach(slot=>{
+    slot.addEventListener('dragover', e=>{
+      e.preventDefault(); e.stopPropagation();
+      const col = SLOTS.find(s=>s.key===slot.dataset.col);
+      const count = Object.values(state.placement).filter(v=>v===col.key).length;
+      if(count < col.cap) slot.classList.add('drag-over');
+    });
+    slot.addEventListener('dragleave', ()=>slot.classList.remove('drag-over'));
+    slot.addEventListener('drop', e=>{
+      e.preventDefault(); e.stopPropagation();
+      slot.classList.remove('drag-over');
+      const cardId = e.dataTransfer.getData('card');
+      if(!cardId) return;
+      const col = SLOTS.find(s=>s.key===slot.dataset.col);
+      const count = Object.values(state.placement).filter(v=>v===col.key).length;
+      if(count >= col.cap){
+        alert(`「${col.label}」列只能放 ${col.cap} 张，已经满啦！请重新权衡一下~`);
+        return;
+      }
+      state.log.push({event:"place", card:cardId, from:state.placement[cardId]||"pool", to:col.key, ts:new Date().toISOString()});
+      state.placement[cardId] = col.key;
+      renderSort();
+    });
+  });
+}
+
+/* 侧池与空白处的 drop 监听 */
+(function initDnD(){
+  document.querySelectorAll('.side-pool').forEach(pool=>{
+    pool.addEventListener('dragover', e=>{ e.preventDefault(); e.stopPropagation(); pool.classList.add('drag-over'); });
+    pool.addEventListener('dragleave', ()=>pool.classList.remove('drag-over'));
+    pool.addEventListener('drop', e=>{
+      e.preventDefault(); e.stopPropagation();
+      pool.classList.remove('drag-over');
+      returnToPool(e);
+    });
+  });
+  document.addEventListener('dragover', e=>e.preventDefault());
+  document.addEventListener('drop', e=>{
+    e.preventDefault();
+    returnToPool(e);
+  });
+})();
+
+function returnToPool(e){
+  const cardId = e.dataTransfer.getData('card');
+  if(!cardId) return;
+  if(state.placement[cardId]){
+    state.log.push({event:"remove", card:cardId, from:state.placement[cardId], to:"pool", ts:new Date().toISOString()});
+    delete state.placement[cardId];
+  }
+  expandedIds.add(cardId);
+  renderSort();
+}
+
+/* ================= preT2 计时 ================= */
+function startTimerIfPreT2(){
+  if(state.mode !== 'preT2') return;
+  let remain = 300;
+  timerInterval = setInterval(()=>{
+    const m = Math.floor(remain/60), s = remain%60;
+    document.getElementById('timer').textContent = `⏱ ${m}:${String(s).padStart(2,'0')}`;
+    if(--remain < 0){
+      clearInterval(timerInterval);
+      if(Object.keys(state.placement).length === CARDS.length){
+        alert("时间到！自动进入评价环节。");
+        proceedToReview();
+      } else {
+        alert("时间到。请立即完成剩余放置后进入下一步。");
+      }
+    }
+  }, 1000);
+}
+const origShow = show;
+show = function(id){
+  if(id==='sort' && !timerInterval) startTimerIfPreT2();
+  origShow(id);
+};
+
+function proceedToReview() {
+  const placed = Object.keys(state.placement).length;
+  if(placed < CARDS.length){
+    if(!confirm(`还有 ${CARDS.length-placed} 张未放置，确认进入评价？未放置的将被记为缺失。`)) return;
+  }
+  state.log.push({event:"enter_review", ts:new Date().toISOString()});
+  if(timerInterval){ clearInterval(timerInterval); timerInterval=null; }
+  document.getElementById('timer').textContent = '';
+  renderReview();
+  show('review');
+}
+
+/* ================= TopK 评价 ================= */
+function renderReview(){
+  const topKIds = Object.entries(state.placement)
+    .filter(([id, col]) => col === '+2' || col === '+1')
+    .sort((a,b) => Number(b[1]) - Number(a[1]))
+    .map(([id]) => id);
+  if(!topKIds.length){
+    document.getElementById('reviewArea').innerHTML =
+      '<p class="info">你没有把任何卡片放进「赞成 / 强烈赞成」，无需填写，直接提交即可。</p>';
+    return;
+  }
+  let html = '';
+  topKIds.forEach(id => {
+    const c = CARDS.find(x=>x.id===id);
+    const rankLabel = state.placement[id]==='+2' ? '强烈赞成 👍👍' : '赞成 👍';
+    /* 参考面板：图左 + 完整 SWOT 右，写理由时随时回看 */
+    const refPanel = `
+      <div class="review-ref">
+        ${imgBlock(c, 'review-ref-img', c.id)}
+        <div class="review-ref-swot">
+          <div class="card-adv">
+            <div class="swot-head">✓ 优点</div>
+            <div class="swot-line">${c.s}</div>
+            <div class="swot-line">${c.o}</div>
+          </div>
+          <div class="card-dis">
+            <div class="swot-head">✗ 缺点</div>
+            <div class="swot-line">${c.w}</div>
+            <div class="swot-line">${c.t}</div>
+          </div>
+        </div>
+      </div>`;
+    html += `
+      <div class="review-block" id="review_block_${id}">
+        <div class="card-title" style="font-size:14px;">${c.name} · 你的排位：${rankLabel}</div>
+        ${refPanel}
+        <div class="section-title-pros">优势 / 支持原因 (建议≥15字)</div>
+        <div id="pros_${id}">
+          ${[0,1,2].map(i => `
+            <div class="input-row">
+              <input type="text" class="fb-input pros" data-card="${id}" data-type="pros" placeholder="写下你支持它的第 ${i+1} 个原因..." oninput="checkInput(this)">
+              <span class="check-icon invalid" id="check_${id}_pros_${i}">✗</span>
+              <button class="btn-del" onclick="removeInput(this)">−</button>
+            </div>`).join('')}
+        </div>
+        <button class="btn secondary small" onclick="addInput('${id}', 'pros')">+ 添加优势</button>
+        <div class="section-title-cons">劣势 / 顾虑原因 (建议≥15字)</div>
+        <div id="cons_${id}">
+          ${[0,1,2].map(i => `
+            <div class="input-row">
+              <input type="text" class="fb-input cons" data-card="${id}" data-type="cons" placeholder="写下你反对它的第 ${i+1} 个原因..." oninput="checkInput(this)">
+              <span class="check-icon invalid" id="check_${id}_cons_${i}">✗</span>
+              <button class="btn-del" onclick="removeInput(this)">−</button>
+            </div>`).join('')}
+        </div>
+        <button class="btn secondary small" onclick="addInput('${id}', 'cons')">+ 添加劣势</button>
+      </div>`;
+  });
+  document.getElementById('reviewArea').innerHTML = html;
+  updateCheckPanel();
+}
+
+function addInput(cardId, type) {
+  const container = document.getElementById(`${type}_${cardId}`);
+  const idx = container.children.length;
+  const div = document.createElement('div');
+  div.className = 'input-row';
+  div.innerHTML = `
+    <input type="text" class="fb-input ${type}" data-card="${cardId}" data-type="${type}" placeholder="继续写原因..." oninput="checkInput(this)">
+    <span class="check-icon invalid" id="check_${cardId}_${type}_${idx}">✗</span>
+    <button class="btn-del" onclick="removeInput(this)">−</button>`;
+  container.appendChild(div);
+  updateCheckPanel();
+}
+
+function removeInput(btn) {
+  const container = btn.parentElement.parentElement;
+  if(container.children.length > 1) {
+    btn.parentElement.remove();
+    updateCheckPanel();
+  } else {
+    alert("至少保留一条，可以留空哦~");
+  }
+}
+
+function checkInput(inputElement) {
+  const checkSpan = inputElement.nextElementSibling;
+  if(inputElement.value.trim().length >= MIN_LEN) {
+    checkSpan.textContent = '✓';
+    checkSpan.classList.replace('invalid','valid');
+  } else {
+    checkSpan.textContent = '✗';
+    checkSpan.classList.replace('valid','invalid');
+  }
+  hasConfirmedShortText = false;
+  updateCheckPanel();
+}
+
+function updateCheckPanel() {
+  const topKIds = Object.entries(state.placement)
+    .filter(([id, col]) => col === '+2' || col === '+1')
+    .map(([id]) => id);
+  let panelHtml = '';
+  topKIds.forEach(id => {
+    const c = CARDS.find(x=>x.id===id);
+    const pros = document.querySelectorAll(`.fb-input.pros[data-card="${id}"]`);
+    const cons = document.querySelectorAll(`.fb-input.cons[data-card="${id}"]`);
+    let pv=0; pros.forEach(i=>{ if(i.value.trim().length>=MIN_LEN) pv++; });
+    let cv=0; cons.forEach(i=>{ if(i.value.trim().length>=MIN_LEN) cv++; });
+    panelHtml += `
+      <div class="check-item"><span><b>${c.id}</b> 优势</span>
+        <span class="check-status" style="color:${pv===pros.length?'#2e7d32':'#d84315'}">${pv===pros.length?'✓ 合格':`${pv}/${pros.length}`}</span></div>
+      <div class="check-item"><span><b>${c.id}</b> 劣势</span>
+        <span class="check-status" style="color:${cv===cons.length?'#2e7d32':'#d84315'}">${cv===cons.length?'✓ 合格':`${cv}/${cons.length}`}</span></div>`;
+  });
+  document.getElementById('checkList').innerHTML = panelHtml || '<div>无评价项</div>';
+}
+
+/* ================= 提交 ================= */
+function finalSubmit(){
+  let invalidCount = 0, invalidItems = [];
+  document.querySelectorAll('.fb-input').forEach(input => {
+    if(input.value.trim().length < MIN_LEN) {
+      invalidCount++;
+      if(input.value.trim().length > 0) invalidItems.push(input.value.trim());
+    }
+  });
+  if(invalidCount > 0 && !hasConfirmedShortText) {
+    const confirmMsg = `检测到 ${invalidCount} 条意见输入少于 15 字或为空。\n\n我们理解简短的文字可能已足以表达您的真实想法。请确认：您输入的这些短句或留空，是否准确反映了您的意思？\n\n点击"确定"将以此提交，点击"取消"返回修改。`;
+    if(confirm(confirmMsg)) {
+      hasConfirmedShortText = true;
+      state.log.push({event:"short_text_confirmed", count: invalidCount, items: invalidItems, ts:new Date().toISOString()});
+    } else {
+      return;
+    }
+  }
+  state.feedback = {};
+  document.querySelectorAll('.fb-input').forEach(input => {
+    const card = input.dataset.card, type = input.dataset.type;
+    if(!state.feedback[card]) state.feedback[card] = {pros:[], cons:[]};
+    state.feedback[card][type].push(input.value.trim());
+  });
+  state.log.push({event:"final_submit", ts:new Date().toISOString()});
+  window.__result = {
+    participant: state.pid,
+    mode: state.mode,
+    startedAt: new Date(state.startTime).toISOString(),
+    submittedAt: new Date().toISOString(),
+    durationSec: Math.round((Date.now()-state.startTime)/1000),
+    placement: state.placement,
+    feedback: state.feedback,
+    actionLog: state.log
+  };
+  const rows = SLOTS.map(s=>{
+    const ids = Object.entries(state.placement).filter(([id,c])=>c===s.key).map(([id])=>id);
+    return `<tr><td><b>${s.label}</b>（${s.key}）</td><td>${ids.join(', ')||'—'}</td></tr>`;
+  }).join('');
+  document.getElementById('resultPreview').innerHTML =
+    `<table class="summary" style="margin-top:20px"><tr><th>列</th><th>卡片</th></tr>${rows}</table>`;
+  show('done');
+}
+
+function downloadJSON(){
+  const blob = new Blob([JSON.stringify(window.__result,null,2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `qsort_${state.pid}_${state.mode}_${Date.now()}.json`;
+  a.click();
+}
+
+function resetSort(){
+  if(timerInterval){ clearInterval(timerInterval); timerInterval=null; }
+  state.placement = {};
+  state.feedback = {};
+  expandedIds.clear();
+  state.log = [{event:"reset", ts:new Date().toISOString()}];
+  renderSort();
+}
+
+/* ================= 汇总 ================= */
+const allResults = [];
+let csvData = "";
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover', e=>e.preventDefault());
+dz.addEventListener('drop', e=>{
+  e.preventDefault();
+  [...e.dataTransfer.files].forEach(f=>{
+    const r = new FileReader();
+    r.onload = ev=>{
+      try{
+        allResults.push(JSON.parse(ev.target.result));
+        renderMatrix();
+      }catch(err){ alert(`${f.name} 不是有效 JSON`); }
+    };
+    r.readAsText(f);
+  });
+});
+
+function renderMatrix(){
+  let html = `<table class="summary"><tr><th>参与者</th><th>模式</th>`;
+  CARDS.forEach(c=>html+=`<th>${c.id}</th>`);
+  html += `<th>用时(s)</th></tr>`;
+  allResults.forEach(r=>{
+    html += `<tr><td>${r.participant}</td><td>${r.mode}</td>`;
+    CARDS.forEach(c=>html+=`<td>${r.placement[c.id]??'?'}</td>`);
+    html += `<td>${r.durationSec}</td></tr>`;
+  });
+  html += `</table>`;
+  document.getElementById('matrixWrap').innerHTML = html;
+  document.getElementById('csvBtn').style.display='inline-block';
+  let csv = "participant,mode," + CARDS.map(c=>c.id).join(",") + ",durationSec\n";
+  allResults.forEach(r=>{
+    csv += `${r.participant},${r.mode},` + CARDS.map(c=>r.placement[c.id]??"").join(",") + `,${r.durationSec}\n`;
+  });
+  csvData = csv;
+}
+
+function exportCSV(){
+  const blob = new Blob(["\ufeff"+csvData], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `qsort_matrix_${Date.now()}.csv`;
+  a.click();
+}
+</script>
+</body>
+</html>
